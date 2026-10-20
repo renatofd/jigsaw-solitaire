@@ -72,6 +72,8 @@ function nextInTheme(theme: Theme): number {
 const LOCK_SVG = '<svg class="lock" viewBox="0 0 24 24" aria-hidden="true"><path class="shackle" d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/><rect class="body" x="5.5" y="10.5" width="13" height="10" rx="2.5"/><path class="hole" d="M12 14.5v2.5"/></svg>';
 
 function showHome() {
+  cancelDrag();
+  loadToken++;
   $('game').hidden = true;
   $('home').hidden = false;
   const theme = THEMES[themeIndex()];
@@ -179,6 +181,8 @@ let layout = { left: 0, top: 0, w: 0, h: 0, cw: 0, ch: 0, gap: 0, radius: 0, lin
 const BLEED = 1;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 let drag: { pointerId: number; group: number[]; sx: number; sy: number } | null = null;
+/** Muda a cada nível aberto: um carregamento antigo que termine depois não monta cartas repetidas. */
+let loadToken = 0;
 
 const boardEl = $('board');
 const stageEl = $('stage');
@@ -206,7 +210,8 @@ async function startLevel(th: number, i: number) {
     : shuffled(n, n, Math.random);
   moves = saved?.moves ?? 0;
   solved = false;
-  drag = null;
+  cancelDrag();
+  const token = ++loadToken;
   save.current = { id: picture.id, cells: board.cells, moves };
   persist();
 
@@ -219,6 +224,7 @@ async function startLevel(th: number, i: number) {
   boardEl.replaceChildren();
   cards = [];
   await preload(picture.file);
+  if (token !== loadToken) return;
   for (let id = 0; id < n * n; id++) {
     const el = document.createElement('div');
     el.className = 'card';
@@ -315,12 +321,15 @@ function groupAt(pos: number): number[] {
 }
 
 function onPointerDown(e: PointerEvent, card: Card) {
-  if (drag || solved || e.button > 0) return;
+  if (solved || e.button > 0) return;
   e.preventDefault();
+  // No celular o fim de um toque às vezes nunca chega (gesto do sistema, notificação, troca de app).
+  // Um toque novo sempre vale: o arrasto anterior volta para o lugar em vez de travar o jogo.
+  cancelDrag();
   const pos = board.cells.indexOf(card.id);
   const group = groupAt(pos);
   for (const gp of group) cards[board.cells[gp]].el.classList.add('dragging');
-  card.el.setPointerCapture(e.pointerId);
+  try { card.el.setPointerCapture(e.pointerId); } catch { /* o ponteiro já sumiu */ }
   play('pick');
   drag = { pointerId: e.pointerId, group, sx: e.clientX, sy: e.clientY };
 }
@@ -334,8 +343,21 @@ window.addEventListener('pointermove', (e) => {
   }
 });
 
+/** Solta o grupo arrastado sem mover nada: as cartas voltam para onde estavam. */
+function cancelDrag() {
+  if (!drag) return;
+  const d = drag;
+  drag = null;
+  for (const gp of d.group) cards[board.cells[gp]]?.el.classList.remove('dragging');
+  if (cards.length === board.cells.length) render();
+}
+
 function endDrag(e: PointerEvent) {
   if (!drag || e.pointerId !== drag.pointerId) return;
+  if (e.type === 'pointercancel') {
+    cancelDrag();
+    return;
+  }
   const d = drag;
   drag = null;
   for (const gp of d.group) cards[board.cells[gp]].el.classList.remove('dragging');
@@ -349,6 +371,12 @@ function endDrag(e: PointerEvent) {
 }
 window.addEventListener('pointerup', endDrag);
 window.addEventListener('pointercancel', endDrag);
+// Toque fora das cartas com um arrasto pendurado (o fim do toque anterior se perdeu).
+window.addEventListener('pointerdown', (e) => {
+  if (drag && !(e.target as HTMLElement).closest?.('.card')) cancelDrag();
+}, true);
+document.addEventListener('visibilitychange', () => { if (document.hidden) cancelDrag(); });
+window.addEventListener('blur', cancelDrag);
 
 function groupSizes(): Map<number, number> {
   const ids = groupIds(board);
@@ -580,6 +608,8 @@ new ResizeObserver(() => {
 // Gancho para testes automatizados.
 (window as unknown as { __game: unknown }).__game = {
   get board() { return board; },
+  get dragging() { return drag !== null; },
+  get cardCount() { return boardEl.children.length; },
   cellCenter(pos: number) {
     const r = boardEl.getBoundingClientRect();
     const [x, y] = cellXY(pos);
