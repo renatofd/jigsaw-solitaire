@@ -1,0 +1,14 @@
+Música e efeitos sonoros (do catálogo E:\Recursos)
+
+Música (loops):
+  music-1.mp3  "sunny spot piano"   - Megumi Ryu (https://megumi-ryu.itch.io/)
+  music-2.mp3  "healing music box"  - Megumi Ryu
+  music-3.mp3  "everyday piano"     - Megumi Ryu
+
+Efeitos:
+  click, drop, merge (snap), locked (negative) - GUI Sound Effects by Lokif (OpenGameArt)
+  pick, theme (swosh-01, swosh-04)           - qubodup / Iwan Gabovitch, CC0 (OpenGameArt)
+  win (glassbell)                            - pacote "Level Up!" (E:\Recursos\efeitos sonoros\Level Up!)
+  hint (marimba1)                            - Megumi Ryu, pasta "13. SFX & UI"
+
+Os arquivos foram cortados (silêncio removido), normalizados e convertidos para MP3.
