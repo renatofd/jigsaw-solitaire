@@ -200,10 +200,12 @@ button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
 .card .edge-light { stroke: var(--card-edge); }
 .card .edge-dark { stroke: var(--outline); }
 .card.dragging .edge-light { stroke: var(--gold); }
-.card.flash .face { animation: flash 0.5s ease-out; }
-@keyframes flash { from { filter: brightness(1.6); } }
-.card.hinted .face { animation: hint 1.1s ease-in-out 2; }
-@keyframes hint { 50% { filter: brightness(1.45); } }
+/* brilho por uma camada branca, não por filter: filter dentro de clip-path falha em GPUs de celular */
+.card::after { content: ''; position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+.card.flash::after { animation: flash 0.5s ease-out; }
+@keyframes flash { from { opacity: 0.4; } }
+.card.hinted::after { animation: hint 1.1s ease-in-out 2; }
+@keyframes hint { 50% { opacity: 0.3; } }
 .board.solved .card svg { opacity: 0; transition: opacity 0.5s 0.3s; }
 
 /* Sobreposições */
@@ -243,6 +245,7 @@ button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
 .sheet-card.small { width: min(380px, 100%); padding-bottom: 20px; }
 .sheet-card header { display: flex; align-items: center; justify-content: space-between; padding: 10px 10px 4px 20px; }
 .sheet-card h2 { margin: 0; font-size: 20px; }
+.sheet-card .build { margin: 14px 20px 0; text-align: center; font-size: 11px; color: var(--ink-soft); opacity: 0.6; direction: ltr; }
 .sheet-card .muted { margin: 4px 20px 16px; color: var(--ink-soft); font-size: 14px; }
 .danger-btn { margin: 0 20px; height: 44px; border: 0; border-radius: 12px; background: var(--danger); font-weight: 600; }
 .gallery-grid {
