@@ -167,6 +167,8 @@ interface Card {
   face: HTMLDivElement;
   svg: SVGSVGElement;
   paths: SVGPathElement[];
+  /** Último contorno e tamanho aplicados: só mexe no clip-path quando muda. */
+  shape: string;
 }
 
 let picture: Picture;
@@ -240,8 +242,9 @@ async function startLevel(th: number, i: number) {
       return path;
     });
     el.appendChild(svg);
-    const card = { id, el, face, svg, paths };
+    const card = { id, el, face, svg, paths, shape: '' };
     el.addEventListener('pointerdown', (e) => onPointerDown(e, card));
+    el.addEventListener('animationend', () => el.classList.remove('flash', 'hinted'));
     boardEl.appendChild(el);
     cards.push(card);
   }
@@ -292,20 +295,25 @@ function render(instant = false) {
     // contorno do grupo inteiro, no sistema de coordenadas desta carta
     const local = groupPath(group, geom, x - BLEED, y - BLEED);
     const el = card.el.style;
-    el.width = `${bw}px`;
-    el.height = `${bh}px`;
-    el.clipPath = `path('${local}')`;
-    el.setProperty('-webkit-clip-path', `path('${local}')`);
-    const f = card.face.style;
-    const ic = id % cols, ir = Math.floor(id / cols);
-    f.backgroundSize = `${w}px ${h}px`;
-    f.backgroundPosition = `${-(ic * cw - BLEED)}px ${-(ir * ch - BLEED)}px`;
-    card.svg.setAttribute('viewBox', `0 0 ${bw} ${bh}`);
-    // o recorte esconde a metade de fora do traço: fica a linha escura na borda e o filete claro por dentro
-    card.paths[0].setAttribute('d', local);
-    card.paths[0].setAttribute('stroke-width', String((line + 1.5) * 2));
-    card.paths[1].setAttribute('d', local);
-    card.paths[1].setAttribute('stroke-width', String(line * 2));
+    const shape = `${bw}x${bh}|${w}x${h}|${line}|${local}`;
+    // Trocar o clip-path força o celular a redesenhar a carta: só quando o contorno mudou de verdade.
+    if (shape !== card.shape) {
+      card.shape = shape;
+      el.width = `${bw}px`;
+      el.height = `${bh}px`;
+      el.clipPath = `path('${local}')`;
+      el.setProperty('-webkit-clip-path', `path('${local}')`);
+      const f = card.face.style;
+      const ic = id % cols, ir = Math.floor(id / cols);
+      f.backgroundSize = `${w}px ${h}px`;
+      f.backgroundPosition = `${-(ic * cw - BLEED)}px ${-(ir * ch - BLEED)}px`;
+      card.svg.setAttribute('viewBox', `0 0 ${bw} ${bh}`);
+      // o recorte esconde a metade de fora do traço: fica a linha escura na borda e o filete claro por dentro
+      card.paths[0].setAttribute('d', local);
+      card.paths[0].setAttribute('stroke-width', String((line + 1.5) * 2));
+      card.paths[1].setAttribute('d', local);
+      card.paths[1].setAttribute('stroke-width', String(line * 2));
+    }
     if (instant) el.transition = 'none';
     el.transform = `translate(${x - BLEED}px, ${y - BLEED}px)`;
     if (instant) {
@@ -556,6 +564,7 @@ function refreshTexts() {
   $('lang-flag').innerHTML = info.flag;
   $('lang-name').textContent = info.name;
   $<HTMLButtonElement>('btn-reset').textContent = t('reset');
+  $('build').textContent = `v ${__BUILD__}`;
   updateHint();
   if (!$('home').hidden) showHome();
   if (!$('game').hidden && picture) $('level-pill').textContent = levelName();
