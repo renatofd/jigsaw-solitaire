@@ -2,7 +2,7 @@
 // Depois de cada gesto confere que o jogo não ficou preso num arrasto e que o tabuleiro está íntegro.
 import { chromium, devices } from 'playwright';
 const URL = process.env.URL ?? 'http://localhost:4173/';
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/opt/pw-browsers/chromium' });
 const failures = [];
 const check = (name, ok, info = '') => { if (!ok) failures.push(`${name} ${info}`); console.log(ok ? 'ok  ' : 'FAIL', name, info); };
 

@@ -2,7 +2,7 @@
 import { chromium, devices } from 'playwright';
 const URL = process.env.URL ?? 'http://localhost:4173/';
 const OUT = process.env.SHOTS ?? '/tmp/claude-0/shots';
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/opt/pw-browsers/chromium' });
 async function run(name, ctxOpts) {
   const ctx = await browser.newContext(ctxOpts);
   const page = await ctx.newPage();

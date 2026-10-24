@@ -2,7 +2,7 @@
 import { chromium, devices } from 'playwright';
 const URL = process.env.URL ?? 'http://localhost:4173/';
 const OUT = process.env.SHOTS ?? '/tmp/claude-0/shots';
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/opt/pw-browsers/chromium' });
 for (const [name, opts] of [['ja-desktop', { locale: 'ja-JP', viewport: { width: 1280, height: 800 } }], ['de-mobile', { ...devices['iPhone 13'], locale: 'de-DE' }]]) {
   const ctx = await browser.newContext(opts);
   const page = await ctx.newPage();
