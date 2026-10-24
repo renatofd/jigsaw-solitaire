@@ -2,7 +2,7 @@
 import { chromium } from 'playwright';
 const URL = process.env.URL ?? 'http://localhost:4173/';
 const OUT = process.env.SHOTS ?? '/tmp/claude-0/shots';
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/opt/pw-browsers/chromium' });
 for (const [name, scale] of [['dpr1', 1], ['dpr125', 1.25]]) {
   const ctx = await browser.newContext({ viewport: { width: 1100, height: 760 }, deviceScaleFactor: scale });
   const page = await ctx.newPage();

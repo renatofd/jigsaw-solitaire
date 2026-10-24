@@ -358,3 +358,56 @@ button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
 
 /* Árabe: setas apontam para o lado certo */
 [dir='rtl'] .arrow-btn svg, [dir='rtl'] #btn-back svg { transform: scaleX(-1); }
+
+/* Tutorial da primeira partida: carta de origem, destino, carta fantasma e a mão */
+.tutorial { position: absolute; pointer-events: none; z-index: 15; --hx: 24px; --hy: 3px; }
+.tutorial.busy { opacity: 0; transition: opacity 0.12s; }
+.tut-from, .tut-to, .tut-ghost {
+  position: absolute; left: 0; top: 0;
+  width: var(--cw); height: var(--ch);
+  border-radius: var(--r);
+}
+.tut-from { transform: translate(var(--fx), var(--fy)); box-shadow: inset 0 0 0 3px var(--accent), 0 0 18px rgba(94, 224, 200, 0.6); animation: tut-pulse 1.2s ease-in-out infinite; }
+.tut-to { transform: translate(var(--tx), var(--ty)); border: 3px dashed var(--gold); background: rgba(255, 209, 102, 0.12); }
+@keyframes tut-pulse { 50% { box-shadow: inset 0 0 0 3px var(--accent), 0 0 4px rgba(94, 224, 200, 0.2); } }
+.tut-ghost { background-repeat: no-repeat; opacity: 0; box-shadow: 0 0 0 2px var(--gold), 0 10px 24px rgba(0, 0, 0, 0.45); }
+.tut-hand {
+  position: absolute; left: 0; top: 0;
+  width: 60px; height: 72px;
+  overflow: visible;
+  opacity: 0;
+  transform-origin: var(--hx) var(--hy);
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.4));
+}
+.tut-hand-fill { fill: #fff; stroke: var(--outline); stroke-width: 3.5; stroke-linejoin: round; }
+.tut-hand-line { fill: none; stroke: var(--outline); stroke-width: 2.5; stroke-linecap: round; }
+.tutorial.run .tut-hand { animation: tut-hand 2.6s ease-in-out infinite; }
+.tutorial.run .tut-ghost { animation: tut-ghost 2.6s ease-in-out infinite; }
+/* a ponta do dedo (--hx, --hy) vai do centro da carta até o centro do destino */
+@keyframes tut-hand {
+  0% { opacity: 0; transform: translate(calc(var(--fx) + var(--cw) / 2 - var(--hx) + 14px), calc(var(--fy) + var(--ch) / 2 - var(--hy) + 22px)); }
+  14% { opacity: 1; transform: translate(calc(var(--fx) + var(--cw) / 2 - var(--hx)), calc(var(--fy) + var(--ch) / 2 - var(--hy))); }
+  24% { opacity: 1; transform: translate(calc(var(--fx) + var(--cw) / 2 - var(--hx)), calc(var(--fy) + var(--ch) / 2 - var(--hy))) scale(0.86); }
+  66% { opacity: 1; transform: translate(calc(var(--tx) + var(--cw) / 2 - var(--hx)), calc(var(--ty) + var(--ch) / 2 - var(--hy))) scale(0.86); }
+  76% { opacity: 1; transform: translate(calc(var(--tx) + var(--cw) / 2 - var(--hx)), calc(var(--ty) + var(--ch) / 2 - var(--hy))); }
+  92%, 100% { opacity: 0; transform: translate(calc(var(--tx) + var(--cw) / 2 - var(--hx)), calc(var(--ty) + var(--ch) / 2 - var(--hy))); }
+}
+@keyframes tut-ghost {
+  0%, 22% { opacity: 0; transform: translate(var(--fx), var(--fy)); }
+  26% { opacity: 0.85; transform: translate(var(--fx), var(--fy)) scale(1.04); }
+  66% { opacity: 0.85; transform: translate(var(--tx), var(--ty)) scale(1.04); }
+  78%, 100% { opacity: 0; transform: translate(var(--tx), var(--ty)); }
+}
+.tut-tip {
+  position: absolute; left: 50%; bottom: 10px;
+  transform: translateX(-50%);
+  width: max-content; max-width: calc(100% - 32px);
+  margin: 0; padding: 10px 18px;
+  border-radius: 14px;
+  background: rgba(15, 11, 33, 0.92);
+  box-shadow: 0 0 0 2px var(--accent);
+  font-weight: 600; text-align: center;
+  pointer-events: none;
+  z-index: 16;
+  animation: fade 0.25s ease;
+}

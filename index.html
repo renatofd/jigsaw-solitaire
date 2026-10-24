@@ -4,7 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#1d1838" />
-    <title>Jigsaw Solitaire</title>
+    <meta name="application-name" content="Jigsaw Cards" />
+    <meta name="apple-mobile-web-app-title" content="Jigsaw Cards" />
+    <title>Jigsaw Cards</title>
+    <script src="https://game-cdn.poki.com/scripts/v2/poki-sdk.js"></script>
     <link rel="stylesheet" href="./src/style.css" />
   </head>
   <body>
@@ -46,7 +49,17 @@
           <span id="hint-count" class="badge">3</span>
         </button>
       </header>
-      <div id="stage" class="stage"><div id="board" class="board"></div></div>
+      <div id="stage" class="stage">
+        <div id="board" class="board"></div>
+        <!-- Tutorial da primeira partida: a mão mostra o primeiro movimento -->
+        <div id="tutorial" class="tutorial" hidden aria-hidden="true">
+          <div class="tut-from"></div>
+          <div class="tut-to"></div>
+          <div class="tut-ghost"></div>
+          <svg class="tut-hand" viewBox="0 0 70 84"><path class="tut-hand-fill" d="M22 40V8a6 6 0 0 1 12 0v22a6 6 0 0 1 11 2v2a5.5 5.5 0 0 1 10 2v1a5 5 0 0 1 9 3v14c0 14-9 24-22 24h-6c-9 0-14-5-18-12L8 51a5.5 5.5 0 0 1 9-6l5 5Z"/><path class="tut-hand-line" d="M34 30v9M45 34v6M55 37v5"/></svg>
+        </div>
+        <p id="tut-tip" class="tut-tip" role="status" hidden></p>
+      </div>
     </section>
 
     <!-- Vitória -->
