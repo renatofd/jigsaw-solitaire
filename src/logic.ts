@@ -107,11 +107,7 @@ export function shuffled(rows: number, cols: number, rng: Rng): Board {
       [cells[i], cells[j]] = [cells[j], cells[i]];
     }
     const board = { rows, cols, cells };
-    let links = 0;
-    for (let p = 0; p < n; p++) {
-      if (p % cols < cols - 1 && linked(board, p, p + 1)) links++;
-      if (p + cols < n && linked(board, p, p + cols)) links++;
-    }
+    const links = countLinks(board);
     if (links < bestLinks) {
       best = board;
       bestLinks = links;
@@ -119,4 +115,54 @@ export function shuffled(rows: number, cols: number, rng: Rng): Board {
     if (links === 0) break;
   }
   return best!;
+}
+
+/** Quantos pares de cartas vizinhas já estão encaixados. */
+export function countLinks(board: Board): number {
+  const { cols } = board;
+  const n = board.cells.length;
+  let links = 0;
+  for (let p = 0; p < n; p++) {
+    if (p % cols < cols - 1 && linked(board, p, p + 1)) links++;
+    if (p + cols < n && linked(board, p, p + cols)) links++;
+  }
+  return links;
+}
+
+export interface Suggestion {
+  /** posição da carta que o jogador arrasta */
+  from: number;
+  /** posição onde ela deve ser solta */
+  to: number;
+  dr: number;
+  dc: number;
+}
+
+/**
+ * Melhor jogada para ensinar: a que mais encaixa cartas. Prefere mover uma carta sozinha
+ * (mais fácil de entender); só usa grupos se nenhuma carta solta encaixa nada.
+ */
+export function suggestMove(board: Board): Suggestion | null {
+  const ids = groupIds(board);
+  const groups = new Map<number, number[]>();
+  ids.forEach((g, p) => {
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g)!.push(p);
+  });
+  const base = countLinks(board);
+  let best: (Suggestion & { gain: number; size: number }) | null = null;
+  for (const group of groups.values()) {
+    for (let dr = -board.rows + 1; dr < board.rows; dr++) {
+      for (let dc = -board.cols + 1; dc < board.cols; dc++) {
+        if (dr === 0 && dc === 0) continue;
+        const [cr, cc] = clampOffset(board, group, dr, dc);
+        if (cr !== dr || cc !== dc) continue;
+        const gain = countLinks(moveGroup(board, group, dr, dc)) - base;
+        if (gain <= 0) continue;
+        const better = !best || group.length < best.size || (group.length === best.size && gain > best.gain);
+        if (better) best = { from: group[0], to: group[0] + dr * board.cols + dc, dr, dc, gain, size: group.length };
+      }
+    }
+  }
+  return best && { from: best.from, to: best.to, dr: best.dr, dc: best.dc };
 }

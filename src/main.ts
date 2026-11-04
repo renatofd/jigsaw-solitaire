@@ -1,11 +1,13 @@
-import { type Board, clampOffset, groupIds, isSolved, linked, moveGroup, shuffled } from './logic';
+import { type Board, type Suggestion, clampOffset, groupIds, isSolved, moveGroup, shuffled, suggestMove } from './logic';
 import { ALL_PICTURES, THEMES, type Picture, type Theme, gridFor } from './levels';
 import { groupPath } from './outline';
 import { type Lang, LANGS, applyStatic, detectLang, isLang, lang, langInfo, pictureTitle, setLang, t } from './i18n';
 import { initAudio, play, setMusic, setSfx } from './audio';
+import { gameplayStart, gameplayStop, initPoki, loadingFinished, measure } from './poki';
 
 const SAVE_KEY = 'jigsaw-solitaire:save:v2';
 const SETTINGS_KEY = 'jigsaw-solitaire:settings';
+const TUTORIAL_KEY = 'jigsaw-solitaire:tutorial';
 const HINTS_START = 3;
 
 interface Save {
@@ -138,6 +140,7 @@ function layoutHome() {
 
 function changeTheme(step: number) {
   play('theme');
+  measure('button', step > 0 ? 'theme-next' : 'theme-prev', 'interact');
   save.theme = (themeIndex() + step + THEMES.length) % THEMES.length;
   persist();
   showHome();
@@ -145,11 +148,17 @@ function changeTheme(step: number) {
 $('btn-theme-prev').addEventListener('click', () => changeTheme(-1));
 $('btn-theme-next').addEventListener('click', () => changeTheme(1));
 window.addEventListener('keydown', (e) => {
+  // O Poki pede que setas e espaço não rolem a página onde o jogo está embutido.
+  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(e.key) && !(e.target as HTMLElement).closest?.('button, input')) e.preventDefault();
   if ($('home').hidden || document.querySelector('.overlay:not([hidden])')) return;
   if (e.key === 'ArrowLeft') changeTheme(-1);
   if (e.key === 'ArrowRight') changeTheme(1);
 });
 new ResizeObserver(() => { if (!$('home').hidden) layoutHome(); }).observe($('level-grid'));
+// Roda do mouse também não rola a página; só as listas das janelas (coleção, idiomas) rolam.
+window.addEventListener('wheel', (e) => {
+  if (!(e.target as HTMLElement).closest?.('.sheet')) e.preventDefault();
+}, { passive: false });
 
 $('btn-play').addEventListener('click', () => {
   const th = themeIndex();
@@ -176,6 +185,7 @@ let levelTheme = 0;
 let levelIndex = 0;
 let board: Board;
 let moves = 0;
+let hintsUsed = 0;
 let cards: Card[] = [];
 let solved = false;
 let layout = { left: 0, top: 0, w: 0, h: 0, cw: 0, ch: 0, gap: 0, radius: 0, line: 2 };
@@ -210,7 +220,10 @@ async function startLevel(th: number, i: number) {
   board = saved
     ? { rows: n, cols: n, cells: saved.cells.slice() }
     : shuffled(n, n, Math.random);
+  // No tutorial o primeiro movimento precisa encaixar alguma coisa.
+  for (let i = 0; !saved && tutorialPending() && !suggestMove(board) && i < 50; i++) board = shuffled(n, n, Math.random);
   moves = saved?.moves ?? 0;
+  hintsUsed = 0;
   solved = false;
   cancelDrag();
   const token = ++loadToken;
@@ -250,6 +263,22 @@ async function startLevel(th: number, i: number) {
   }
   computeLayout();
   render(true);
+  // O nível sempre abre por um toque do jogador, então a partida começa aqui.
+  gameplayStart();
+  measure('level', picture.id, saved ? 'resume' : 'start');
+  measure('button', 'hint', 'visible');
+  startTutorial();
+}
+
+/** Sai do nível no meio (botão voltar). */
+function leaveLevel() {
+  if (picture && !solved) {
+    measure('level', picture.id, 'quit');
+    if (tutorial) measure('tutorial', 'first-move', 'fail');
+  }
+  stopTutorial();
+  gameplayStop();
+  showHome();
 }
 
 function computeLayout() {
@@ -340,6 +369,7 @@ function onPointerDown(e: PointerEvent, card: Card) {
   try { card.el.setPointerCapture(e.pointerId); } catch { /* o ponteiro já sumiu */ }
   play('pick');
   drag = { pointerId: e.pointerId, group, sx: e.clientX, sy: e.clientY };
+  tutEl.classList.add('busy');
 }
 
 window.addEventListener('pointermove', (e) => {
@@ -357,6 +387,7 @@ function cancelDrag() {
   const d = drag;
   drag = null;
   for (const gp of d.group) cards[board.cells[gp]]?.el.classList.remove('dragging');
+  tutEl.classList.remove('busy');
   if (cards.length === board.cells.length) render();
 }
 
@@ -369,6 +400,7 @@ function endDrag(e: PointerEvent) {
   const d = drag;
   drag = null;
   for (const gp of d.group) cards[board.cells[gp]].el.classList.remove('dragging');
+  tutEl.classList.remove('busy');
   const [dr, dc] = clampOffset(board, d.group, Math.round((e.clientY - d.sy) / layout.ch), Math.round((e.clientX - d.sx) / layout.cw));
   if (dr === 0 && dc === 0) {
     render();
@@ -401,7 +433,8 @@ function applyMove(group: number[], dr: number, dc: number) {
   moves++;
   render();
   const after = groupSizes();
-  if (!isSolved(board) && cards.some((c) => after.get(c.id)! > before.get(c.id)!)) play('merge');
+  const merged = cards.some((c) => after.get(c.id)! > before.get(c.id)!);
+  if (!isSolved(board) && merged) play('merge');
   for (const c of cards) {
     if (after.get(c.id)! > before.get(c.id)!) {
       c.el.classList.remove('flash');
@@ -411,7 +444,90 @@ function applyMove(group: number[], dr: number, dc: number) {
   }
   save.current = { id: picture.id, cells: board.cells, moves };
   persist();
+  tutorialAfterMove(merged);
   if (isSolved(board)) win();
+}
+
+// ---------- Tutorial (primeira partida) ----------
+
+const tutEl = $('tutorial');
+const tutTip = $('tut-tip');
+/** Jogada que a mão está mostrando; null quando o tutorial não está na tela. */
+let tutorial: Suggestion | null = null;
+let tutTipTimer = 0;
+
+function tutorialPending(): boolean {
+  try { return localStorage.getItem(TUTORIAL_KEY) !== 'done'; } catch { return true; }
+}
+
+function startTutorial() {
+  stopTutorial();
+  if (!tutorialPending()) return;
+  tutorial = suggestMove(board);
+  if (!tutorial) return;
+  measure('tutorial', 'first-move', 'start');
+  showTip(t('tutDrag'));
+  tutEl.hidden = false;
+  placeTutorial();
+}
+
+function stopTutorial() {
+  tutorial = null;
+  tutEl.hidden = true;
+  tutTip.hidden = true;
+  clearTimeout(tutTipTimer);
+}
+
+function showTip(text: string) {
+  tutTip.textContent = text;
+  tutTip.hidden = false;
+  clearTimeout(tutTipTimer);
+}
+
+/** Posiciona a mão, a carta fantasma e as marcações sobre o tabuleiro atual. */
+function placeTutorial() {
+  if (!tutorial || !board) return;
+  const { cw, ch, radius, left, top } = layout;
+  const [fx, fy] = cellXY(tutorial.from);
+  const [tx, ty] = cellXY(tutorial.to);
+  const st = tutEl.style;
+  st.left = `${left}px`;
+  st.top = `${top}px`;
+  st.width = `${layout.w}px`;
+  st.height = `${layout.h}px`;
+  st.setProperty('--cw', `${cw}px`);
+  st.setProperty('--ch', `${ch}px`);
+  st.setProperty('--r', `${radius}px`);
+  st.setProperty('--fx', `${fx}px`);
+  st.setProperty('--fy', `${fy}px`);
+  st.setProperty('--tx', `${tx}px`);
+  st.setProperty('--ty', `${ty}px`);
+  const ghost = tutEl.querySelector<HTMLElement>('.tut-ghost')!.style;
+  const id = board.cells[tutorial.from];
+  ghost.backgroundImage = `url("${picture.file}")`;
+  ghost.backgroundSize = `${layout.w}px ${layout.h}px`;
+  ghost.backgroundPosition = `${-(id % board.cols) * cw}px ${-Math.floor(id / board.cols) * ch}px`;
+  // reinicia a animação para a mão sair da carta certa
+  tutEl.classList.remove('run');
+  void tutEl.offsetWidth;
+  tutEl.classList.add('run');
+}
+
+function tutorialAfterMove(merged: boolean) {
+  if (!tutorial) return;
+  if (merged || isSolved(board)) {
+    try { localStorage.setItem(TUTORIAL_KEY, 'done'); } catch { /* sem armazenamento */ }
+    measure('tutorial', 'first-move', 'complete');
+    tutorial = null;
+    tutEl.hidden = true;
+    showTip(t('tutGood'));
+    tutTipTimer = window.setTimeout(() => (tutTip.hidden = true), 3500);
+    return;
+  }
+  // a jogada não encaixou nada: mostra outra a partir do tabuleiro novo
+  tutorial = suggestMove(board);
+  if (tutorial) placeTutorial();
+  else stopTutorial();
 }
 
 // ---------- Dica ----------
@@ -432,6 +548,7 @@ $('btn-hint').addEventListener('click', () => {
   if (save.hints === 0) {
     play('locked');
     toast(t('noHints'));
+    measure('hint', 'empty', 'tap');
     return;
   }
   const target = board.cells.findIndex((id, pos) => id !== pos);
@@ -441,8 +558,10 @@ $('btn-hint').addEventListener('click', () => {
   const r = Math.floor(target / board.cols) - Math.floor(from / board.cols);
   const c = (target % board.cols) - (from % board.cols);
   save.hints--;
+  hintsUsed++;
   updateHint();
   play('hint');
+  measure('button', 'hint', 'interact');
   for (const gp of group) {
     const el = cards[board.cells[gp]].el;
     el.classList.remove('hinted');
@@ -456,8 +575,11 @@ $('btn-hint').addEventListener('click', () => {
 
 function win() {
   solved = true;
+  gameplayStop();
   save.hints++;
-  if (!save.done.includes(picture.id)) save.done.push(picture.id);
+  const first = !save.done.includes(picture.id);
+  if (first) save.done.push(picture.id);
+  measureWin(first);
   save.theme = levelTheme;
   delete save.current;
   persist();
@@ -477,7 +599,23 @@ $('btn-continue').addEventListener('click', () => {
   $('win').hidden = true;
   showHome();
 });
-$('btn-back').addEventListener('click', () => { play('click'); showHome(); });
+$('btn-back').addEventListener('click', () => { play('click'); leaveLevel(); });
+
+/** Game events da vitória: nível, dificuldade e marcos de progresso. */
+function measureWin(first: boolean) {
+  const n = board.cols;
+  measure('level', picture.id, 'complete');
+  // movimentos em relação ao número de cartas: mostra se a grade está fácil ou difícil
+  const ratio = moves / (n * n);
+  const bucket = ratio <= 1 ? 'moves-up-to-1x' : ratio <= 2 ? 'moves-up-to-2x' : ratio <= 3 ? 'moves-up-to-3x' : 'moves-over-3x';
+  measure('difficulty', `grid-${n}`, bucket);
+  measure('difficulty', `grid-${n}`, hintsUsed > 3 ? 'hints-4-plus' : `hints-${hintsUsed}`);
+  if (!first) return;
+  const count = save.done.length;
+  if ([1, 2, 3, 5, 10, 15, 20, 30, 40, 50, 60, 70].includes(count)) measure('progress', `levels-${count}`, 'reached');
+  const theme = THEMES[levelTheme];
+  if (theme.pictures.every((p) => save.done.includes(p.id))) measure('theme', theme.id, 'complete');
+}
 
 let toastTimer = 0;
 function toast(text: string) {
@@ -491,6 +629,7 @@ function toast(text: string) {
 // ---------- Coleção e configurações ----------
 
 function openViewer(p: Picture) {
+  measure('collection', 'picture', 'view');
   $<HTMLImageElement>('viewer-img').src = p.file;
   $('viewer-cap').textContent = titleOf(p);
   $('viewer').hidden = false;
@@ -498,6 +637,7 @@ function openViewer(p: Picture) {
 $('viewer').addEventListener('click', () => ($('viewer').hidden = true));
 
 $('btn-gallery').addEventListener('click', () => {
+  measure('button', 'collection', 'interact');
   const grid = $('gallery-grid');
   grid.replaceChildren();
   const done = ALL_PICTURES.filter((p) => save.done.includes(p.id));
@@ -529,6 +669,7 @@ $('btn-gallery').addEventListener('click', () => {
 });
 $('btn-settings').addEventListener('click', () => {
   play('click');
+  measure('button', 'settings', 'interact');
   $('settings').hidden = false;
 });
 for (const el of document.querySelectorAll<HTMLElement>('.sheet')) {
@@ -549,11 +690,13 @@ optSfx.checked = settings.sfx;
 optMusic.addEventListener('change', () => {
   settings.music = optMusic.checked;
   setMusic(settings.music);
+  measure('settings', 'music', settings.music ? 'on' : 'off');
   persistSettings();
 });
 optSfx.addEventListener('change', () => {
   settings.sfx = optSfx.checked;
   setSfx(settings.sfx);
+  measure('settings', 'sfx', settings.sfx ? 'on' : 'off');
   persistSettings();
   play('click');
 });
@@ -585,6 +728,7 @@ $('btn-language').addEventListener('click', () => {
       play('click');
       settings.lang = l.code;
       persistSettings();
+      measure('settings', 'language', l.code);
       setLang(l.code);
       refreshTexts();
       $('languages').hidden = true;
@@ -602,6 +746,7 @@ $('btn-reset').addEventListener('click', (e) => {
   }
   save = { hints: HINTS_START, done: [] };
   persist();
+  measure('settings', 'reset-progress', 'confirm');
   btn.dataset.confirm = '';
   btn.textContent = t('reset');
   $('settings').hidden = true;
@@ -612,12 +757,14 @@ new ResizeObserver(() => {
   if ($('game').hidden || !board || cards.length !== board.cells.length) return;
   computeLayout();
   render(true);
+  placeTutorial();
 }).observe(stageEl);
 
 // Gancho para testes automatizados.
 (window as unknown as { __game: unknown }).__game = {
   get board() { return board; },
   get dragging() { return drag !== null; },
+  get tutorial() { return tutorial; },
   get cardCount() { return boardEl.children.length; },
   cellCenter(pos: number) {
     const r = boardEl.getBoundingClientRect();
@@ -626,5 +773,9 @@ new ResizeObserver(() => {
   },
 };
 
-refreshTexts();
-showHome();
+// O Poki pede para iniciar o SDK antes do jogo; se falhar, o jogo abre do mesmo jeito.
+initPoki().then(() => {
+  refreshTexts();
+  showHome();
+  loadingFinished();
+});

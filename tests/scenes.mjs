@@ -1,5 +1,5 @@
 import { chromium } from 'playwright';
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/opt/pw-browsers/chromium' });
 const page = await browser.newPage({ viewport: { width: 1500, height: 560 } });
 await page.goto('http://localhost:4173/');
 for (let i = 0; i < 5; i++) {
